@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src data: blob:">
+  <title>Bulletin Builder</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Empty state ─────────────────────────────────────────────── -->
+  <div id="empty-state" class="empty-state">
+    <div class="empty-state-inner">
+      <div class="empty-icon">✝</div>
+      <h1>Bulletin Builder</h1>
+      <p>Open your bulletin workspace folder to get started.</p>
+      <button id="btn-open-workspace" class="btn btn-primary btn-lg">Open Workspace</button>
+    </div>
+  </div>
+
+  <!-- ── Main UI ──────────────────────────────────────────────────── -->
+  <div id="main-ui" class="hidden">
+
+    <!-- Header -->
+    <header class="header">
+      <span class="app-name">Bulletin Builder</span>
+      <span class="sep">·</span>
+      <span id="workspace-path" class="workspace-path"></span>
+      <button id="btn-change-workspace" class="btn btn-ghost btn-sm">Change</button>
+      <button id="btn-library" class="btn btn-ghost btn-sm">Library</button>
+      <button id="btn-settings" class="btn btn-ghost btn-sm" title="Settings">⚙</button>
+      <div class="spacer"></div>
+      <label class="date-label" for="bulletin-date">Date</label>
+      <input type="date" id="bulletin-date" class="date-input">
+      <button id="btn-save" class="btn btn-secondary">Save</button>
+      <button id="btn-build" class="btn btn-primary">Build PDF</button>
+    </header>
+
+    <!-- Bulletin editor layout -->
+    <div class="layout" id="main-layout">
+
+      <!-- Services sidebar -->
+      <div class="panel-weeks" id="panel-weeks"></div>
+
+      <!-- Left: tabs + form content -->
+      <div class="panel-left">
+        <nav class="tab-nav">
+          <button class="tab-btn active" data-tab="order">Order</button>
+          <button class="tab-btn"        data-tab="announcements">Second Page</button>
+        </nav>
+
+        <div class="tab-panels">
+          <div id="tab-order"         class="tab-panel"></div>
+          <div id="tab-announcements" class="tab-panel hidden">
+            <!-- Block selector -->
+            <div class="ann-blocks-panel">
+              <div class="ann-blocks-header">
+                <span class="ann-blocks-title">Sections</span>
+                <span id="ann-blocks-mode-badge" class="blocks-mode-badge blocks-mode-global">Global default</span>
+                <button id="ann-blocks-toggle" class="btn btn-ghost btn-xs">Customize for this service</button>
+                <button id="ann-add-block" class="btn btn-ghost btn-xs">+ Add section</button>
+              </div>
+              <div id="ann-blocks-list" class="blocks-list"></div>
+            </div>
+            <!-- Content editor — switches based on selected block -->
+            <div class="block-content-area">
+              <div id="ann-editor-container" class="hidden"></div>
+              <textarea id="block-text-editor" class="block-text-editor hidden"
+                spellcheck="true" placeholder="Content goes here…"></textarea>
+              <div id="block-no-selection" class="block-no-selection">
+                Select a section above to edit its content.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: build log + PDF preview -->
+      <div class="panel-right">
+        <div class="right-tabs">
+          <button class="rtab-btn active" data-rtab="log">Log</button>
+          <button class="rtab-btn"        data-rtab="preview">Preview</button>
+        </div>
+
+        <div id="rtab-log" class="rtab-panel">
+          <div class="log-toolbar">
+            <span id="build-status" class="build-status"></span>
+            <button id="btn-clear-log" class="btn btn-ghost btn-xs">Clear</button>
+          </div>
+          <div id="log-output" class="log-output"></div>
+        </div>
+
+        <div id="rtab-preview" class="rtab-panel hidden">
+          <div id="pdf-placeholder" class="pdf-placeholder">
+            <span>PDF will appear here after a successful build.</span>
+          </div>
+          <iframe id="pdf-frame" class="pdf-frame hidden" src=""></iframe>
+        </div>
+      </div>
+
+    </div><!-- .layout -->
+
+    <!-- Elements library view (replaces .layout when active) -->
+    <div id="elements-view" class="elements-view hidden">
+      <div class="elements-view-toolbar">
+        <span class="elements-view-title">Elements Library</span>
+        <span class="elements-view-hint">Edit reusable liturgical texts — prayers, confessions, creeds, psalms</span>
+      </div>
+      <div id="elements-container" class="elem-layout"></div>
+    </div>
+
+  </div><!-- #main-ui -->
+
+  <!-- ── Service creation dialog ──────────────────────────────────── -->
+  <div id="service-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box">
+      <div class="dialog-header">New Service</div>
+      <div class="dialog-body">
+        <div class="dialog-field">
+          <label for="svc-name">Name</label>
+          <input type="text" id="svc-name" placeholder="e.g. Good Friday or 2025-04-18" autocomplete="off">
+        </div>
+        <div class="dialog-field">
+          <label for="svc-date">Date <span class="dialog-hint">(for schedule &amp; build scripts)</span></label>
+          <input type="date" id="svc-date">
+        </div>
+        <div class="dialog-field-check">
+          <label class="dialog-check-label">
+            <input type="checkbox" id="svc-communion">
+            Communion service
+          </label>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn" id="svc-cancel">Cancel</button>
+        <button class="btn btn-primary" id="svc-confirm">Create Service</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings dialog ───────────────────────────────────────────── -->
+  <div id="settings-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box settings-dialog-box">
+      <div class="dialog-header">Settings</div>
+      <div class="dialog-body">
+        <div class="settings-section">
+          <div class="settings-section-title">Church Identity</div>
+          <p class="settings-section-desc">
+            These values appear in the bulletin header. Leave a field blank to omit it.
+          </p>
+          <div class="settings-field-group">
+            <label for="cfg-church-name">Church Name</label>
+            <input id="cfg-church-name" type="text" placeholder="Vernal Presbyterian Church" class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="cfg-denomination">Denomination / Tagline <span class="opt">(optional)</span></label>
+            <input id="cfg-denomination" type="text" placeholder="A Congregation of the Evangelical Presbyterian Church" class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="cfg-service-title">Service Title</label>
+            <input id="cfg-service-title" type="text" placeholder="Lord's Day Service" class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="cfg-standing-note">Standing Note <span class="opt">(optional)</span></label>
+            <input id="cfg-standing-note" type="text" placeholder="*The congregation is invited to stand." class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="cfg-logo">Logo Filename <span class="opt">(optional)</span></label>
+            <small>PNG in the workspace's <code>graphics/</code> folder.</small>
+            <input id="cfg-logo" type="text" placeholder="church-logo.png" class="settings-input">
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Communion Liturgy Template</div>
+          <p class="settings-section-desc">
+            These entries are inserted into the Order tab when a new service is created
+            with Communion enabled. Format: <code>HD&Tab;Section Title</code> for headings,
+            <code>Name&Tab;Ref&Tab;Note</code> for elements.
+          </p>
+          <textarea id="settings-communion-tsv" class="settings-tsv-textarea"
+            spellcheck="false" rows="8"></textarea>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn" id="settings-cancel">Cancel</button>
+        <button class="btn btn-primary" id="settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Church setup wizard ────────────────────────────────────────── -->
+  <div id="church-setup-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box settings-dialog-box">
+      <div class="dialog-header">Welcome to Bulletin Builder</div>
+      <div class="dialog-body">
+        <p class="settings-section-desc">
+          Set up your church's identity for the bulletin header. You can edit these
+          any time in Settings.
+        </p>
+        <div class="settings-section">
+          <div class="settings-field-group">
+            <label for="setup-church-name">Church Name</label>
+            <input id="setup-church-name" type="text" placeholder="Vernal Presbyterian Church" class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="setup-denomination">Denomination / Tagline <span class="opt">(optional)</span></label>
+            <input id="setup-denomination" type="text" placeholder="A Congregation of the Evangelical Presbyterian Church" class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="setup-service-title">Service Title</label>
+            <input id="setup-service-title" type="text" placeholder="Lord's Day Service" class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="setup-standing-note">Standing Note <span class="opt">(optional)</span></label>
+            <input id="setup-standing-note" type="text" placeholder="*The congregation is invited to stand." class="settings-input">
+          </div>
+          <div class="settings-field-group">
+            <label for="setup-logo">Logo Filename <span class="opt">(optional)</span></label>
+            <small>Place your logo PNG in the workspace's <code>graphics/</code> folder.</small>
+            <input id="setup-logo" type="text" placeholder="church-logo.png" class="settings-input">
+          </div>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn" id="setup-skip">Skip for now</button>
+        <button class="btn btn-primary" id="setup-save">Save &amp; Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
