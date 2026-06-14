@@ -501,11 +501,9 @@ body {
 }
 .resp-hint-min    { color: var(--accent); font-weight: 600; }
 .resp-hint-all   { color: var(--text-2); }
-.resp-hint-unison { color: var(--text-2); font-variant: small-caps; }
 
 /* Responsive reading speaker preview in the card */
 .resp-part[data-speaker="Minister"] .resp-text { border-left: 3px solid var(--accent); padding-left: 6px; }
-.resp-part[data-speaker="Unison"]   .resp-text { border-left: 3px solid var(--text-3);  padding-left: 6px; font-variant: small-caps; }
 .resp-part[data-speaker="All"]      .resp-text { border-left: 3px solid var(--border-2); padding-left: 6px; }
 
 /* Hymn number field — full width */

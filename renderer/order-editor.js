@@ -173,8 +173,6 @@ export class OrderEditor {
             if (!p.text.trim()) continue;
             if (p.speaker === 'All') {
               lines.push(`\\responseall{${p.text}}`);
-            } else if (p.speaker === 'Unison') {
-              lines.push(`\\responseunison{${p.text}}`);
             } else {
               // Minister
               lines.push(`${p.speaker}\t${p.text}\t`);
@@ -335,7 +333,6 @@ export class OrderEditor {
             <select class="order-field resp-speaker" data-part="${pi}">
               <option value="Minister"${p.speaker === 'Minister' ? ' selected' : ''}>Minister</option>
               <option value="All"${p.speaker === 'All' ? ' selected' : ''}>All</option>
-              <option value="Unison"${p.speaker === 'Unison' ? ' selected' : ''}>Unison</option>
             </select>
             <button class="btn btn-ghost btn-xs resp-del-part" data-part="${pi}" title="Remove part">×</button>
           </div>
@@ -348,8 +345,7 @@ export class OrderEditor {
         <button class="btn btn-ghost btn-sm resp-add-part">+ Add Part</button>
         <div class="resp-hints">
           <span class="resp-hint-min">Minister = bold / indented</span>
-          <span class="resp-hint-all">All = regular</span>
-          <span class="resp-hint-unison">Unison = small-caps, centered</span>
+          <span class="resp-hint-all">All = regular indent</span>
         </div>`;
 
     } else {
@@ -455,12 +451,7 @@ export class OrderEditor {
       });
       card.querySelector('.resp-add-part').addEventListener('click', () => {
         const last = item.parts[item.parts.length - 1];
-        // Cycle: Minister → All → Unison → Minister
-        const order = ['Minister', 'All', 'Unison'];
-        const next  = !last ? 'All'
-          : last.speaker === 'Minister' ? 'All'
-          : last.speaker === 'All'      ? 'Unison'
-          : 'Minister';
+        const next = (!last || last.speaker === 'Minister') ? 'All' : 'Minister';
         item.parts.push({ speaker: next, text: '' });
         this._dirty = true;
         this._renderList();
