@@ -1,18 +1,28 @@
 {
   "name": "bulletin-builder",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Weekly church bulletin builder",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win"
+    "dev": "electron . --enable-logging",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl"
   },
   "devDependencies": {
     "electron": "^28.3.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9"
   },
   "dependencies": {
-    "pdf-lib": "^1.17.1"
+    "better-sqlite3": "^12.10.1",
+    "electron-log": "^5.4.4",
+    "handlebars": "^4.7.9",
+    "pdf-lib": "^1.17.1",
+    "sharp": "^0.33.5"
   },
   "build": {
     "appId": "org.bulletinbuilder.app",
@@ -22,14 +32,72 @@
       "preload.js",
       "bulletin-render.js",
       "bulletin-print.js",
+      "src/**/*",
       "renderer/**/*",
       "package.json"
     ],
     "extraResources": [
-      { "from": "fonts/", "to": "fonts/" }
+      {
+        "from": "fonts/",
+        "to": "fonts/"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/better-sqlite3/**/*"
     ],
     "win": {
-      "target": "zip"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office"
     }
   }
 }
