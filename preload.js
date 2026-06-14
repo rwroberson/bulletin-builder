@@ -56,4 +56,43 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('build:done', (_, data) => cb(data));
     },
   },
+
+  // ── Database API (Phase 1+) ───────────────────────────────────────────────
+  db: {
+    // Lifecycle
+    init:      (workspacePath) => ipcRenderer.invoke('db:init', workspacePath),
+    migrate:   (workspacePath) => ipcRenderer.invoke('db:migrate', workspacePath),
+    // Church config
+    getChurch: (workspacePath) => ipcRenderer.invoke('db:getChurch', workspacePath),
+    saveChurch:(workspacePath, data) => ipcRenderer.invoke('db:saveChurch', workspacePath, data),
+    // Hymns
+    getHymns:  (workspacePath, filter) => ipcRenderer.invoke('db:getHymns', workspacePath, filter),
+    addHymn:   (workspacePath, hymn)   => ipcRenderer.invoke('db:addHymn',   workspacePath, hymn),
+    importHymns:(workspacePath, hymns, source) => ipcRenderer.invoke('db:importHymns', workspacePath, hymns, source),
+    // Templates
+    getTemplates: (workspacePath) => ipcRenderer.invoke('db:getTemplates', workspacePath),
+    getTemplate:  (workspacePath, slug) => ipcRenderer.invoke('db:getTemplate', workspacePath, slug),
+    // Services
+    listServices: (workspacePath)    => ipcRenderer.invoke('db:listServices', workspacePath),
+    getService:   (workspacePath, date) => ipcRenderer.invoke('db:getService', workspacePath, date),
+    createService:(workspacePath, data) => ipcRenderer.invoke('db:createService', workspacePath, data),
+    saveService:  (workspacePath, data) => ipcRenderer.invoke('db:saveService', workspacePath, data),
+    deleteService:(workspacePath, date) => ipcRenderer.invoke('db:deleteService', workspacePath, date),
+    // Order of worship
+    getOrderItems:  (workspacePath, date)      => ipcRenderer.invoke('db:getOrderItems',  workspacePath, date),
+    saveOrderItems: (workspacePath, date, items) => ipcRenderer.invoke('db:saveOrderItems', workspacePath, date, items),
+    // Announcements
+    getAnnouncements:  (workspacePath, date)        => ipcRenderer.invoke('db:getAnnouncements',  workspacePath, date),
+    saveAnnouncements: (workspacePath, date, items) => ipcRenderer.invoke('db:saveAnnouncements', workspacePath, date, items),
+    // Liturgy constants
+    getLiturgyConstants: (workspacePath) => ipcRenderer.invoke('db:getLiturgyConstants', workspacePath),
+    saveLiturgyConstant: (workspacePath, key, value, hymnId) => ipcRenderer.invoke('db:saveLiturgyConstant', workspacePath, key, value, hymnId),
+    // Second page blocks
+    getSecondPageBlocks: (workspacePath, date)       => ipcRenderer.invoke('db:getSecondPageBlocks', workspacePath, date),
+    saveSecondPageBlock: (workspacePath, date, block) => ipcRenderer.invoke('db:saveSecondPageBlock', workspacePath, date, block),
+    // Assets
+    getAssets:  (workspacePath) => ipcRenderer.invoke('db:getAssets', workspacePath),
+    saveAsset:  (workspacePath, asset) => ipcRenderer.invoke('db:saveAsset', workspacePath, asset),
+    deleteAsset:(workspacePath, id)    => ipcRenderer.invoke('db:deleteAsset', workspacePath, id),
+  },
 });

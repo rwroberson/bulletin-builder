@@ -4,6 +4,7 @@ const fs    = require('fs');
 const { spawn } = require('child_process');
 const { renderBulletinHTML } = require('./bulletin-render');
 const { printBulletin, imposeBooklet } = require('./bulletin-print');
+const { getWorkspaceDb, closeWorkspaceDb, migrateLegacyFiles } = require('./src/database');
 
 let mainWindow;
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
@@ -568,3 +569,363 @@ async function runBuild(sender, workspacePath, folder, date, communion) {
     sender.send('build:done', { success: false, error: err.message });
   }
 }
+
+// ── Database IPC handlers (Phase 1+) ───────────────────────────────────────
+
+ipcMain.handle('db:init', (_, workspacePath) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:migrate', (_, workspacePath) => {
+  try {
+    const log = {
+      info: (...a) => { /* migration is silent on success */ },
+      warn: (...a) => console.warn('[DB migrate]', ...a),
+      error: (...a) => console.error('[DB migrate]', ...a),
+    };
+    migrateLegacyFiles(workspacePath, log);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getChurch', (_, workspacePath) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT * FROM church WHERE id = 1').get() ?? null;
+  } catch { return null; }
+});
+
+ipcMain.handle('db:saveChurch', (_, workspacePath, data) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    db.prepare(`
+      UPDATE church SET
+        name = COALESCE(?, name),
+        denomination = COALESCE(?, denomination),
+        tagline = COALESCE(?, tagline),
+        standing_note = COALESCE(?, standing_note),
+        default_template = COALESCE(?, default_template)
+      WHERE id = 1
+    `).run(data.name, data.denomination, data.tagline, data.standing_note, data.default_template);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getHymns', (_, workspacePath, filter = {}) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    let sql = 'SELECT * FROM hymns WHERE 1=1';
+    const params = [];
+    if (filter.source) { sql += ' AND source = ?'; params.push(filter.source); }
+    if (filter.query) {
+      sql += ' AND (code LIKE ? OR title LIKE ?)';
+      const q = filter.query + '%';
+      params.push(q, q + '%');
+    }
+    sql += ' ORDER BY code+0 ASC, code ASC LIMIT 100';
+    return db.prepare(sql).all(...params);
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
+});
+
+ipcMain.handle('db:getTemplates', (_, workspacePath) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT id, slug, name, description, is_system FROM templates').all();
+  } catch { return []; }
+});
+
+ipcMain.handle('db:getTemplate', (_, workspacePath, slug) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT * FROM templates WHERE slug = ?').get(slug) ?? null;
+  } catch { return null; }
+});
+
+ipcMain.handle('db:listServices', (_, workspacePath) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT id, date, template_id, communion, season, updated_at FROM services ORDER BY date DESC').all();
+  } catch { return []; }
+});
+
+ipcMain.handle('db:getService', (_, workspacePath, date) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT * FROM services WHERE date = ?').get(date) ?? null;
+  } catch { return null; }
+});
+
+ipcMain.handle('db:createService', (_, workspacePath, { date, templateSlug, communion, season }) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const template = db.prepare('SELECT id FROM templates WHERE slug = ?').get(templateSlug ?? 'classic-half-sheet');
+    const stmt = db.prepare(`
+      INSERT INTO services (date, template_id, communion, season)
+      VALUES (?, ?, ?, ?)
+    `);
+    const result = stmt.run(date, template?.id ?? null, communion ? 1 : 0, season ?? 'Ordinary Time');
+    return { ok: true, serviceId: result.lastInsertRowid };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:saveService', (_, workspacePath, { date, communion, season }) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    db.prepare(`
+      UPDATE services SET
+        communion = COALESCE(?, communion),
+        season = COALESCE(?, season),
+        updated_at = datetime('now')
+      WHERE date = ?
+    `).run(communion != null ? (communion ? 1 : 0) : null, season, date);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:deleteService', (_, workspacePath, date) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    db.prepare('DELETE FROM services WHERE date = ?').run(date);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getOrderItems', (_, workspacePath, date) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const service = db.prepare('SELECT id FROM services WHERE date = ?').get(date);
+    if (!service) return [];
+    return db.prepare(`
+      SELECT oi.*, h.code as hymn_code, h.title as hymn_title, h.tune as hymn_tune
+      FROM order_items oi
+      LEFT JOIN hymns h ON oi.hymn_id = h.id
+      WHERE oi.service_id = ?
+      ORDER BY oi.section, oi.position
+    `).all(service.id);
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
+});
+
+ipcMain.handle('db:saveOrderItems', (_, workspacePath, date, items) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const service = db.prepare('SELECT id FROM services WHERE date = ?').get(date);
+    if (!service) return { ok: false, error: 'Service not found' };
+
+    const upsert = db.prepare(`
+      INSERT INTO order_items (service_id, position, section, type, enabled, name, ref, note, hymn_id, custom_text, file_path, is_fixed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        position = excluded.position, section = excluded.section, type = excluded.type,
+        enabled = excluded.enabled, name = excluded.name, ref = excluded.ref,
+        note = excluded.note, hymn_id = excluded.hymn_id,
+        custom_text = excluded.custom_text, file_path = excluded.file_path,
+        is_fixed = excluded.is_fixed
+    `);
+
+    const replace = db.transaction((rows) => {
+      // Clear non-fixed items for this service
+      db.prepare('DELETE FROM order_items WHERE service_id = ? AND is_fixed = 0').run(service.id);
+      for (const item of rows) {
+        if (item.is_fixed) continue; // don't reinsert fixed items
+        upsert.run(
+          service.id, item.position, item.section, item.type,
+          item.enabled ? 1 : 0, item.name, item.ref, item.note,
+          item.hymn_id ?? null, item.custom_text ?? null, item.file_path ?? null,
+          item.is_fixed ? 1 : 0
+        );
+      }
+    });
+    replace(items);
+    // Touch updated_at
+    db.prepare("UPDATE services SET updated_at = datetime('now') WHERE id = ?").run(service.id);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getAnnouncements', (_, workspacePath, date) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const service = db.prepare('SELECT id FROM services WHERE date = ?').get(date);
+    if (!service) return [];
+    return db.prepare('SELECT * FROM announcements WHERE service_id = ? ORDER BY position').all(service.id);
+  } catch { return []; }
+});
+
+ipcMain.handle('db:saveAnnouncements', (_, workspacePath, date, items) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const service = db.prepare('SELECT id FROM services WHERE date = ?').get(date);
+    if (!service) return { ok: false, error: 'Service not found' };
+
+    const upsert = db.prepare(`
+      INSERT INTO announcements (service_id, position, type, label, body, title, content)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        position = excluded.position, type = excluded.type, label = excluded.label,
+        body = excluded.body, title = excluded.title, content = excluded.content
+    `);
+
+    const replace = db.transaction((rows) => {
+      db.prepare('DELETE FROM announcements WHERE service_id = ?').run(service.id);
+      rows.forEach(item => {
+        upsert.run(service.id, item.position, item.type, item.label, item.body, item.title, item.content);
+      });
+    });
+    replace(items);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getLiturgyConstants', (_, workspacePath) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT lc.*, h.code as hymn_code, h.title as hymn_title FROM liturgy_constants lc LEFT JOIN hymns h ON lc.hymn_id = h.id').all();
+  } catch { return []; }
+});
+
+ipcMain.handle('db:saveLiturgyConstant', (_, workspacePath, key, value, hymnId = null) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    db.prepare('INSERT OR REPLACE INTO liturgy_constants (key, value, hymn_id) VALUES (?, ?, ?)').run(key, value, hymnId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getSecondPageBlocks', (_, workspacePath, date) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    // Per-service overrides shadow global defaults
+    const global = db.prepare("SELECT * FROM second_page_blocks WHERE service_id IS NULL OR service_id = '' ORDER BY position").all();
+    if (!date) return global;
+    const service = db.prepare('SELECT id FROM services WHERE date = ?').get(date);
+    if (!service) return global;
+    const perSvc = db.prepare('SELECT * FROM second_page_blocks WHERE service_id = ?').all(service.id);
+    // Merge: per-service version overrides global by label
+    const byLabel = {};
+    for (const b of global) byLabel[b.label] = { ...b };
+    for (const b of perSvc) byLabel[b.label] = { ...b, scope: 'service' };
+    return Object.values(byLabel).sort((a, b) => a.position - b.position);
+  } catch (err) {
+    return [];
+  }
+});
+
+ipcMain.handle('db:saveSecondPageBlock', (_, workspacePath, date, block) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    let serviceId = null;
+    if (date) {
+      const svc = db.prepare('SELECT id FROM services WHERE date = ?').get(date);
+      serviceId = svc?.id ?? null;
+    }
+    if (serviceId) {
+      db.prepare(`
+        INSERT INTO second_page_blocks (service_id, type, label, enabled, position, scope, file_path, custom_content)
+        VALUES (?, ?, ?, ?, ?, 'service', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          enabled = excluded.enabled, position = excluded.position,
+          file_path = excluded.file_path, custom_content = excluded.custom_content
+      `).run(serviceId, block.type, block.label, block.enabled ? 1 : 0, block.position, block.file_path, block.custom_content);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:getAssets', (_, workspacePath) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    return db.prepare('SELECT id, filename, mime, width, height, created_at FROM assets ORDER BY created_at DESC').all();
+  } catch { return []; }
+});
+
+ipcMain.handle('db:saveAsset', (_, workspacePath, { filename, mime, blob, width, height }) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const result = db.prepare(`
+      INSERT INTO assets (filename, mime, blob, width, height)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        filename = excluded.filename, mime = excluded.mime,
+        blob = excluded.blob, width = excluded.width, height = excluded.height
+    `).run(filename, mime, Buffer.from(blob), width, height);
+    return { ok: true, assetId: result.lastInsertRowid };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:deleteAsset', (_, workspacePath, id) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    db.prepare('DELETE FROM assets WHERE id = ?').run(id);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:addHymn', (_, workspacePath, hymn) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const result = db.prepare(`
+      INSERT INTO hymns (code, title, tune, meter, source)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET title=excluded.title, tune=excluded.tune, meter=excluded.meter
+    `).run(hymn.code, hymn.title, hymn.tune, hymn.meter ?? null, hymn.source ?? 'custom');
+    return { ok: true, hymnId: result.lastInsertRowid };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:importHymns', (_, workspacePath, hymns, source) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const upsert = db.prepare(`
+      INSERT INTO hymns (code, title, tune, source)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET title=excluded.title, tune=excluded.tune
+    `);
+    const tx = db.transaction((rows) => {
+      let count = 0;
+      for (const h of rows) {
+        if (h.code) { upsert.run(h.code, h.title || '', h.tune || '', source); count++; }
+      }
+      return count;
+    });
+    const count = tx(hymns);
+    db.prepare(`INSERT INTO import_log (source, count) VALUES (?, ?)`).run(source, count);
+    return { ok: true, count };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
