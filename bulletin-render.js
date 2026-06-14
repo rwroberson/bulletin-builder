@@ -658,8 +658,6 @@ body {
   font-size: 9.5pt;
 }
 .response-all {
-  padding-left: 0.22in;
-  text-indent: -0.22in;
   margin: 2pt 0;
   font-weight: bold;
   font-size: 9pt;
