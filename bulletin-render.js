@@ -283,6 +283,7 @@ function parseElementFile(content) {
         i = arg.end + 1;
         continue;
       }
+    }
 
     // \bulletinline{el}{ref}{note}
     if (rest.startsWith('\\bulletinline{')) {
@@ -449,6 +450,8 @@ function tsvItemsToHtml(items, workspacePath, folder) {
       if (text.startsWith('\\responseall{')) {
         const arg = extractBracedArg(text, '\\responseall'.length);
         if (arg) html.push(`<div class="response-all">${inlineToHtml(arg.content)}</div>`);
+        continue;
+      }
 
       // Music PDF include via \includegraphics or similar — skip
       if (/\\includegraphics|\\includepdf/.test(text)) continue;
