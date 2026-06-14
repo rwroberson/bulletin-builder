@@ -285,6 +285,17 @@ function parseElementFile(content) {
       }
     }
 
+    // \responseunison{...}  (church-speak for whole congregation read together)
+    if (rest.startsWith('\\responseunison{')) {
+      flushText();
+      const arg = extractBracedArg(content, i + '\\responseunison'.length);
+      if (arg) {
+        html.push(`<div class="response-unison">${inlineToHtml(arg.content)}</div>`);
+        i = arg.end + 1;
+        continue;
+      }
+    }
+
     // \bulletinline{el}{ref}{note}
     if (rest.startsWith('\\bulletinline{')) {
       flushText();
@@ -441,7 +452,7 @@ function tsvItemsToHtml(items, workspacePath, folder) {
         continue;
       }
 
-      // \responsemin{...} or \responseall{...} (from order editor's raw items)
+      // \responsemin{...}, \responseall{...}, or \responseunison{...} (from order editor)
       if (text.startsWith('\\responsemin{')) {
         const arg = extractBracedArg(text, '\\responsemin'.length);
         if (arg) html.push(`<div class="response-min">${inlineToHtml(arg.content)}</div>`);
@@ -450,6 +461,11 @@ function tsvItemsToHtml(items, workspacePath, folder) {
       if (text.startsWith('\\responseall{')) {
         const arg = extractBracedArg(text, '\\responseall'.length);
         if (arg) html.push(`<div class="response-all">${inlineToHtml(arg.content)}</div>`);
+        continue;
+      }
+      if (text.startsWith('\\responseunison{')) {
+        const arg = extractBracedArg(text, '\\responseunison'.length);
+        if (arg) html.push(`<div class="response-unison">${inlineToHtml(arg.content)}</div>`);
         continue;
       }
 

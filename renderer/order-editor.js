@@ -171,9 +171,12 @@ export class OrderEditor {
           if (item.label) lines.push(`${item.label}\t\t`);
           for (const p of (item.parts ?? [])) {
             if (!p.text.trim()) continue;
-            if (p.speaker === 'All' || p.speaker === 'Unison') {
+            if (p.speaker === 'All') {
               lines.push(`\\responseall{${p.text}}`);
+            } else if (p.speaker === 'Unison') {
+              lines.push(`\\responseunison{${p.text}}`);
             } else {
+              // Minister
               lines.push(`${p.speaker}\t${p.text}\t`);
             }
           }
@@ -227,6 +230,15 @@ export class OrderEditor {
       return;
     }
     this.items.forEach((item, idx) => this.listEl.appendChild(this._buildCard(item, idx)));
+    // attachDragDrop must survive re-renders — set it up only once
+    if (!this._dragBound) {
+      this._setupDragDrop();
+      this._dragBound = true;
+    }
+  }
+
+  /** Set up drag-drop on listEl. Called once; survives _renderList rebuilds. */
+  _setupDragDrop() {
     attachDragDrop(this.listEl, '.order-item', '.order-drag', (fromIdx, toIdx) => {
       const [moved] = this.items.splice(fromIdx, 1);
       this.items.splice(toIdx, 0, moved);
@@ -318,7 +330,7 @@ export class OrderEditor {
 
     } else if (item.type === 'responsive') {
       const partsHtml = (item.parts ?? []).map((p, pi) => `
-        <div class="resp-part" data-part="${pi}">
+        <div class="resp-part" data-part="${pi}" data-speaker="${esc(p.speaker)}">
           <div class="resp-part-header">
             <select class="order-field resp-speaker" data-part="${pi}">
               <option value="Minister"${p.speaker === 'Minister' ? ' selected' : ''}>Minister</option>
@@ -333,7 +345,12 @@ export class OrderEditor {
         <input type="text" class="order-field responsive-label" value="${esc(item.label)}"
           placeholder="Label (e.g. Call to Worship)">
         <div class="resp-parts">${partsHtml}</div>
-        <button class="btn btn-ghost btn-sm resp-add-part">+ Add Part</button>`;
+        <button class="btn btn-ghost btn-sm resp-add-part">+ Add Part</button>
+        <div class="resp-hints">
+          <span class="resp-hint-min">Minister = bold / indented</span>
+          <span class="resp-hint-all">All = regular</span>
+          <span class="resp-hint-unison">Unison = small-caps, centered</span>
+        </div>`;
 
     } else {
       bodyHtml = `
@@ -415,6 +432,9 @@ export class OrderEditor {
           const pi = Number(e.target.dataset.part);
           item.parts[pi].speaker = e.target.value;
           this._dirty = true;
+          // Update visual preview border
+          const partEl = card.querySelector(`.resp-part[data-part="${pi}"]`);
+          if (partEl) partEl.dataset.speaker = e.target.value;
         });
       });
       card.querySelectorAll('.resp-text').forEach(ta => {
@@ -435,7 +455,12 @@ export class OrderEditor {
       });
       card.querySelector('.resp-add-part').addEventListener('click', () => {
         const last = item.parts[item.parts.length - 1];
-        const next = (!last || last.speaker === 'Minister') ? 'All' : 'Minister';
+        // Cycle: Minister → All → Unison → Minister
+        const order = ['Minister', 'All', 'Unison'];
+        const next  = !last ? 'All'
+          : last.speaker === 'Minister' ? 'All'
+          : last.speaker === 'All'      ? 'Unison'
+          : 'Minister';
         item.parts.push({ speaker: next, text: '' });
         this._dirty = true;
         this._renderList();
