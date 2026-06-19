@@ -489,50 +489,103 @@ ipcMain.on('build:start', (event, params) => {
   runBuild(event.sender, params.workspacePath, params.folder || params.date, params.date, !!params.communion);
 });
 
+// ── DB → TSV conversion helpers ───────────────────────────────────────────────
+
+/** Convert a DB order_items row to a TSV line */
+function dbOrderItemToTsv(row) {
+  if (row.type === 'heading') {
+    return `HD\t${row.custom_text ?? row.name ?? ''}`;
+  }
+  if (row.type === 'hymn') {
+    const ref  = row.ref  || '';
+    const note  = row.note || '';
+    const name  = row.name || 'Hymn';
+    return `${name}\t${ref}\t${note}`;
+  }
+  if (row.type === 'element') {
+    return `${row.name || ''}\t${row.ref || ''}\t${row.note || ''}`;
+  }
+  if (row.type === 'prayer') {
+    const text = row.file_path ? `\\input{elements/${row.file_path}}` : (row.note || '');
+    return `${row.name || 'Prayer'}\t${text}\t`;
+  }
+  if (row.type === 'responsive') {
+    const lines = [];
+    if (row.name && row.name !== 'Responsive Reading') lines.push(`${row.name}\t\t`);
+    const parts = (() => { try { return JSON.parse(row.custom_text || '[]'); } catch { return []; } })();
+    for (const p of parts) {
+      if (!p.text?.trim()) continue;
+      if (p.speaker === 'All') lines.push(`\\responseall{${p.text}}`);
+      else lines.push(`${p.speaker}\t${p.text}\t`);
+    }
+    return lines.join('\n');
+  }
+  if (row.type === 'raw') {
+    return row.custom_text || '';
+  }
+  return '';
+}
+
+/** Convert a DB announcements row to the {type, label, body, title, content} shape */
+function dbAnnouncementToLegacy(row) {
+  return {
+    type:    row.type,
+    label:   row.label  || '',
+    body:    row.body   || '',
+    title:   row.title  || '',
+    content: row.content || '',
+  };
+}
+
+/** Reconstruct TSV from DB order_items rows, matching parseTSV format */
+function dbOrderItemsToTsv(rows) {
+  const sorted = [...rows].sort((a, b) => a.position - b.position);
+  return sorted.map(dbOrderItemToTsv).filter(Boolean).join('\n') + '\n';
+}
+
 async function runBuild(sender, workspacePath, folder, date, communion) {
   const emit = (line, type = 'info') => sender.send('build:log', { line, type });
 
-  const dateDir = path.join(workspacePath, folder);
-
   try {
-    // Ensure date directory exists
-    if (!fs.existsSync(dateDir)) {
-      fs.mkdirSync(dateDir, { recursive: true });
-      emit(`Created ${folder}/`);
+    const db = getWorkspaceDb(workspacePath);
+
+    // ── Step 1: Load from SQLite ──────────────────────────────────────────
+    emit('\n▶ Step 1: Loading service data from DB', 'step');
+
+    const service = db.prepare('SELECT * FROM services WHERE date = ?').get(date);
+    if (!service) {
+      throw new Error(`No service found for ${date}. Create the service first.`);
     }
 
-    // ── Step 1: Load order TSV ────────────────────────────────────────────
-    emit('\n▶ Step 1: Loading order of worship', 'step');
-    const savedOrderPath = path.join(dateDir, 'order.tsv');
+    const orderRows = db.prepare(`
+      SELECT oi.*, h.code as hymn_code, h.title as hymn_title, h.tune as hymn_tune
+      FROM order_items oi
+      LEFT JOIN hymns h ON oi.hymn_id = h.id
+      WHERE oi.service_id = ?
+      ORDER BY oi.position
+    `).all(service.id);
+    emit(`Loaded ${orderRows.length} order items from DB`);
 
-    if (!fs.existsSync(savedOrderPath)) {
-      throw new Error(
-        `No order of worship found for "${folder}".\n` +
-        `Open the Order tab, add your service items, save, then build.`
-      );
-    }
+    const annRows = db.prepare('SELECT * FROM announcements WHERE service_id = ? ORDER BY position').all(service.id);
+    emit(`Loaded ${annRows.length} announcements from DB`);
 
-    const tsvContent = fs.readFileSync(savedOrderPath, 'utf8');
-    emit(`Loaded ${folder}/order.tsv (${tsvContent.split('\n').filter(Boolean).length} rows)`);
+    const tsvContent = dbOrderItemsToTsv(orderRows);
+    const annItems   = annRows.map(dbAnnouncementToLegacy);
 
-    // ── Step 2: Render HTML ───────────────────────────────────────────────
-    emit('\n▶ Step 2: Rendering bulletin HTML', 'step');
+    // ── Step 2: Church config from DB ────────────────────────────────────
+    emit('\n▶ Step 2: Loading church config', 'step');
+    const church = db.prepare('SELECT * FROM church LIMIT 1').get() ?? {};
+    const churchConfig = {
+      churchName:     church.name     ?? '',
+      denomination:   church.denomination ?? '',
+      churchNote:     church.standing_note ?? '',
+      tagline:        church.tagline  ?? '',
+      logoFile:       '', // handled by renderBulletinHTML's logo resolution
+    };
+    emit(`Church: ${churchConfig.churchName || '(not set)'}`);
 
-    // Read sidecar files needed for the announcements page
-    const annPath  = path.join(dateDir, 'announcements.txt');
-    const annItems = fs.existsSync(annPath)
-      ? parseAnnouncements(fs.readFileSync(annPath, 'utf8'))
-      : [];
-
-    const configPath = path.join(workspacePath, 'bulletin-config.json');
-    const globalConfig = fs.existsSync(configPath)
-      ? (() => { try { return JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch { return {}; } })()
-      : {};
-    const svcConfigPath = path.join(dateDir, 'service-config.json');
-    const svcConfig = fs.existsSync(svcConfigPath)
-      ? (() => { try { return JSON.parse(fs.readFileSync(svcConfigPath, 'utf8')); } catch { return {}; } })()
-      : {};
-    const churchConfig = { ...globalConfig, ...svcConfig };
+    // ── Step 3: Render HTML ───────────────────────────────────────────────
+    emit('\n▶ Step 3: Rendering bulletin HTML', 'step');
 
     const htmlContent = renderBulletinHTML({
       workspacePath,
@@ -547,16 +600,16 @@ async function runBuild(sender, workspacePath, folder, date, communion) {
     });
     emit(`HTML rendered (${htmlContent.length} bytes)`);
 
-    // ── Step 3: Print to PDF ──────────────────────────────────────────────
-    emit('\n▶ Step 3: Printing to PDF', 'step');
-    const htmlPath     = path.join(dateDir, 'BULLETIN.html');
-    const bulletinPath = path.join(dateDir, 'BULLETIN.pdf');
+    // ── Step 4: Print to PDF ──────────────────────────────────────────────
+    emit('\n▶ Step 4: Printing to PDF', 'step');
+    const htmlPath     = path.join(workspacePath, folder, 'BULLETIN.html');
+    const bulletinPath = path.join(workspacePath, folder, 'BULLETIN.pdf');
     await printBulletin(htmlContent, htmlPath, bulletinPath);
     emit(`Wrote ${folder}/BULLETIN.pdf`);
 
-    // ── Step 4: Booklet imposition ────────────────────────────────────────
-    emit('\n▶ Step 4: Creating booklet', 'step');
-    const bookPath = path.join(dateDir, 'book.pdf');
+    // ── Step 5: Booklet imposition ────────────────────────────────────────
+    emit('\n▶ Step 5: Creating booklet', 'step');
+    const bookPath = path.join(workspacePath, folder, 'book.pdf');
     await imposeBooklet(bulletinPath, bookPath);
     emit(`Wrote ${folder}/book.pdf`);
 
