@@ -158,6 +158,9 @@ async function loadService(folder, date) {
   // Auto-select the first block
   const firstBlock = blocks[0];
   if (firstBlock) await selectBlock(firstBlock.id, blocks);
+
+  // Refresh live bulletin preview
+  builder?.scheduleRefresh(workspacePath, folder, folder);
 }
 
 async function saveAll() {
@@ -198,6 +201,7 @@ async function saveAll() {
 
   btnSave.textContent = 'Saved';
   btnSave.style.color = 'var(--success)';
+  builder?.scheduleRefresh(workspacePath, folder, folder);
   setTimeout(() => { btnSave.textContent = 'Save'; btnSave.style.color = ''; }, 1200);
 }
 

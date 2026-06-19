@@ -46,7 +46,8 @@ contextBridge.exposeInMainWorld('api', {
     load: (pdfPath) => ipcRenderer.invoke('pdf:load', pdfPath),
   },
   build: {
-    start: (params) => ipcRenderer.send('build:start', params),
+    start:      (params)              => ipcRenderer.invoke('build:start',      params),
+    renderHTML: (params)              => ipcRenderer.invoke('build:renderHTML', params),
     onLog:  (cb) => {
       ipcRenderer.removeAllListeners('build:log');
       ipcRenderer.on('build:log', (_, data) => cb(data));

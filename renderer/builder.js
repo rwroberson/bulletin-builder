@@ -64,19 +64,48 @@ export class Builder {
 
     if (success) {
       this._setStatus('Build succeeded', 'success');
-      await this._loadPDF(pdfPath);
-      // Auto-switch to preview tab
-      document.querySelector('[data-rtab="preview"]')?.click();
+      const dataUrl = await window.api.pdf.load(pdfPath);
+      if (dataUrl) {
+        this.showPDF(dataUrl);
+        document.querySelector('[data-rtab="preview"]')?.click();
+      }
     } else {
       this._setStatus('Build failed', 'error');
     }
   }
 
-  async _loadPDF(pdfPath) {
-    const dataUrl = await window.api.pdf.load(pdfPath);
-    if (!dataUrl) return;
-    this.pdfFrame.src = dataUrl;
-    this.pdfFrame.classList.remove('hidden');
+  /**
+   * Render the bulletin HTML preview into the iframe.
+   * Debounce calls — use scheduleRefresh() for reactive use.
+   */
+  async renderPreview(workspacePath, folder, date) {
+    if (!workspacePath || !folder) return;
+    const result = await window.api.build.renderHTML({ workspacePath, folder, date });
+    if (!result?.ok) return;
     this.pdfPlaceholder.classList.add('hidden');
+    this.pdfFrame.classList.remove('hidden');
+    this.pdfFrame.srcdoc = result.html;
+  }
+
+  /**
+   * Schedule a debounced preview refresh (500ms).
+   * Call this after any data change.
+   */
+  scheduleRefresh(workspacePath, folder, date) {
+    clearTimeout(this._refreshTimer);
+    this._refreshTimer = setTimeout(() => {
+      this.renderPreview(workspacePath, folder, date);
+    }, 500);
+  }
+
+  /**
+   * Show the PDF in the preview iframe (after a full build).
+   * Replaces any live HTML preview.
+   */
+  showPDF(pdfDataUrl) {
+    this.pdfPlaceholder.classList.add('hidden');
+    this.pdfFrame.classList.remove('hidden');
+    this.pdfFrame.srcdoc = '';
+    this.pdfFrame.src = pdfDataUrl;
   }
 }

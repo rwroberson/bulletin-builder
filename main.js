@@ -483,6 +483,53 @@ ipcMain.handle('pdf:load', (_, pdfPath) => {
   return 'data:application/pdf;base64,' + fs.readFileSync(pdfPath).toString('base64');
 });
 
+// ── HTML preview renderer ────────────────────────────────────────────────────
+
+ipcMain.handle('build:renderHTML', async (_, { workspacePath, folder, date }) => {
+  try {
+    const db = getWorkspaceDb(workspacePath);
+    const service = db.prepare('SELECT * FROM services WHERE date = ?').get(date);
+    if (!service) return { ok: false, error: `No service for ${date}` };
+
+    const orderRows = db.prepare(`
+      SELECT oi.*, h.code as hymn_code, h.title as hymn_title, h.tune as hymn_tune
+      FROM order_items oi LEFT JOIN hymns h ON oi.hymn_id = h.id
+      WHERE oi.service_id = ? ORDER BY oi.position
+    `).all(service.id);
+
+    const annRows = db.prepare(
+      'SELECT * FROM announcements WHERE service_id = ? ORDER BY position'
+    ).all(service.id);
+
+    const tsvContent = dbOrderItemsToTsv(orderRows);
+    const annItems   = annRows.map(dbAnnouncementToLegacy);
+
+    const church = db.prepare('SELECT * FROM church LIMIT 1').get() ?? {};
+    const churchConfig = {
+      churchName:   church.name           ?? '',
+      denomination: church.denomination   ?? '',
+      churchNote:   church.standing_note ?? '',
+      tagline:      church.tagline      ?? '',
+      logoFile:     '',
+    };
+
+    const html = renderBulletinHTML({
+      workspacePath,
+      folder,
+      date,
+      tsvContent,
+      fontsDir: app.isPackaged
+        ? path.join(process.resourcesPath, 'fonts')
+        : path.join(__dirname, 'fonts'),
+      announcementItems: annItems,
+      churchConfig,
+    });
+    return { ok: true, html };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // ── Build pipeline ────────────────────────────────────────────────────────────
 
 ipcMain.on('build:start', (event, params) => {
