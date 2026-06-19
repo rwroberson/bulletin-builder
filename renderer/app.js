@@ -86,7 +86,7 @@ async function openWorkspace(path) {
   orderEditor.onCommunionChange = async (enabled) => {
     currentCommunion = enabled;
     if (currentFolder) {
-      await window.api.workspace.setServiceMeta(workspacePath, currentFolder, { communion: enabled });
+      await window.api.db.saveService(workspacePath, { date: currentFolder, communion: enabled });
       weekSidebar?.updateServiceMeta(currentFolder, { communion: enabled });
     }
   };
@@ -126,41 +126,38 @@ async function loadService(folder, date) {
   if (!workspacePath || !folder) return;
   currentFolder = folder;
 
-  const [annItems, orderItems, svcConfig] = await Promise.all([
-    window.api.announcements.read(workspacePath, folder),
-    window.api.order.load(workspacePath, folder),
-    window.api.config.readService(workspacePath, folder),
+  const [annItems, orderItems, service, blocks] = await Promise.all([
+    window.api.db.getAnnouncements(workspacePath, folder),
+    window.api.db.getOrderItems(workspacePath, folder),
+    window.api.db.getService(workspacePath, folder),
+    window.api.db.getSecondPageBlocks(workspacePath, folder),
   ]);
 
   annEditor?.load(annItems ?? []);
   orderEditor?.load(orderItems ?? []);
 
-  // Determine communion state from meta.json
-  const svcMeta = weekSidebar?.services?.find(s => s.name === folder);
-  currentCommunion = !!(svcMeta?.communion);
+  // Communion state from the DB service record
+  currentCommunion = !!(service?.communion);
   orderEditor?.setHasCommunion(currentCommunion);
 
-  weekSidebar?.addServiceIfMissing({ name: folder, date: date || folder });
+  weekSidebar?.addServiceIfMissing({ name: folder, date: folder });
   weekSidebar?.setCurrentService(folder);
 
-  // Load block list for this service
-  const hasServiceBlocks = svcConfig?.secondPageBlocks != null;
+  // Second-page blocks — per-service + global merge from DB
+  const hasServiceBlocks = blocks.some(b => b.scope === 'service');
   blocksMode = hasServiceBlocks ? 'service' : 'global';
-  const effectiveBlocks = hasServiceBlocks
-    ? svcConfig.secondPageBlocks
-    : (globalConfig.secondPageBlocks ?? DEFAULT_SECOND_PAGE_BLOCKS);
 
   // Reset content cache for the new service
   blockContentMap = {};
   activeBlockId = null;
   showBlockEditor(null);
 
-  renderBlocksList(effectiveBlocks, annBlocksContainer);
+  renderBlocksList(blocks, annBlocksContainer);
   updateBlocksModeBadge();
 
   // Auto-select the first block
-  const firstBlock = effectiveBlocks[0];
-  if (firstBlock) await selectBlock(firstBlock.id, effectiveBlocks);
+  const firstBlock = blocks[0];
+  if (firstBlock) await selectBlock(firstBlock.id, blocks);
 }
 
 async function saveAll() {
@@ -171,13 +168,13 @@ async function saveAll() {
 
   const blocks = collectBlocks(annBlocksContainer);
   const saves = [
-    window.api.announcements.write(workspacePath, currentFolder, annEditor.collect()),
+    window.api.db.saveAnnouncements(workspacePath, currentFolder, annEditor.itemsClean()),
   ];
   if (orderEditor?.dirty) {
-    saves.push(window.api.order.save(workspacePath, currentFolder, orderEditor.toTSV()));
+    saves.push(window.api.db.saveOrderItems(workspacePath, currentFolder, orderEditor.toDB()));
   }
 
-  // Save block content cache
+  // Save block content cache — write to workspace files
   for (const [blockId, content] of Object.entries(blockContentMap)) {
     const block = blocks.find(b => b.id === blockId);
     if (!block || block.type === 'announcements') continue;
@@ -187,10 +184,13 @@ async function saveAll() {
     saves.push(window.api.textfile.write(workspacePath, relPath, content));
   }
 
-  // Save block list config
+  // Save block list config — one DB row per block
   if (blocksMode === 'service') {
-    saves.push(window.api.config.writeService(workspacePath, currentFolder, { secondPageBlocks: blocks }));
+    for (const block of blocks) {
+      saves.push(window.api.db.saveSecondPageBlock(workspacePath, currentFolder, block));
+    }
   } else {
+    // Save global defaults to config file (keeps existing workflow intact)
     globalConfig = { ...globalConfig, secondPageBlocks: blocks };
     saves.push(window.api.config.write(workspacePath, globalConfig));
   }

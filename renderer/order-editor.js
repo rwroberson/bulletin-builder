@@ -189,6 +189,98 @@ export class OrderEditor {
       .join('\n') + '\n';
   }
 
+  /** Serialize enabled items for db:saveOrderItems */
+  toDB(section = 'main') {
+    return this.items
+      .filter(item => item.enabled !== false)
+      .map((item, idx) => {
+        if (item.type === 'hymn') {
+          const ref = item.number
+            ? (item.title ? `${item.number} \u2014 ${item.title}` : item.number)
+            : '';
+          return {
+            position: idx, section,
+            type: 'hymn',
+            name: item.name ?? 'Hymn',
+            ref,
+            note: item.custom || item.tune || '',
+            hymn_id: item._hymnDbId ?? null,
+            custom_text: item.custom || null,
+            file_path: null,
+            is_fixed: item.is_fixed ? 1 : 0,
+          };
+        }
+        if (item.type === 'element') {
+          return {
+            position: idx, section,
+            type: 'element',
+            name: item.name ?? '',
+            ref: item.ref ?? '',
+            note: item.note ?? '',
+            hymn_id: null,
+            custom_text: null,
+            file_path: null,
+            is_fixed: 0,
+          };
+        }
+        if (item.type === 'heading') {
+          return {
+            position: idx,
+            section: item.section ?? section,
+            type: 'heading',
+            name: null,
+            ref: null,
+            note: null,
+            hymn_id: null,
+            custom_text: item.title ?? null,
+            file_path: null,
+            is_fixed: 0,
+          };
+        }
+        if (item.type === 'prayer') {
+          return {
+            position: idx, section,
+            type: 'prayer',
+            name: item.name ?? 'Prayer',
+            ref: item.source === 'file' ? item.file : '',
+            note: item.text || null,
+            hymn_id: null,
+            custom_text: null,
+            file_path: item.source === 'file' ? item.file : null,
+            is_fixed: 0,
+          };
+        }
+        if (item.type === 'responsive') {
+          return {
+            position: idx, section,
+            type: 'responsive',
+            name: item.label || 'Responsive Reading',
+            ref: null,
+            note: null,
+            hymn_id: null,
+            custom_text: JSON.stringify(item.parts ?? []),
+            file_path: null,
+            is_fixed: 0,
+          };
+        }
+        if (item.type === 'raw') {
+          return {
+            position: idx, section,
+            type: 'raw',
+            name: null,
+            ref: null,
+            note: null,
+            hymn_id: null,
+            custom_text: item.text ?? null,
+            file_path: null,
+            is_fixed: 0,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
   get dirty() { return this._dirty; }
 
   // ── Private ──────────────────────────────────────────────────────────────
