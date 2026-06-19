@@ -114,28 +114,10 @@
 
   <!-- ── Service creation dialog ──────────────────────────────────── -->
   <div id="service-dialog" class="dialog-overlay hidden">
-    <div class="dialog-box">
-      <div class="dialog-header">New Service</div>
-      <div class="dialog-body">
-        <div class="dialog-field">
-          <label for="svc-name">Name</label>
-          <input type="text" id="svc-name" placeholder="e.g. Good Friday or 2025-04-18" autocomplete="off">
-        </div>
-        <div class="dialog-field">
-          <label for="svc-date">Date <span class="dialog-hint">(for schedule &amp; build scripts)</span></label>
-          <input type="date" id="svc-date">
-        </div>
-        <div class="dialog-field-check">
-          <label class="dialog-check-label">
-            <input type="checkbox" id="svc-communion">
-            Communion service
-          </label>
-        </div>
-      </div>
-      <div class="dialog-actions">
-        <button class="btn" id="svc-cancel">Cancel</button>
-        <button class="btn btn-primary" id="svc-confirm">Create Service</button>
-      </div>
+    <div class="dialog-box" id="svc-dialog-box">
+      <div class="dialog-header" id="svc-dialog-header">New Service</div>
+      <div class="dialog-body" id="svc-dialog-body"></div>
+      <div class="dialog-actions" id="svc-dialog-actions"></div>
     </div>
   </div>
 

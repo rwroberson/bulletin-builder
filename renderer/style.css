@@ -1114,6 +1114,7 @@ body {
   width: 360px;
   overflow: hidden;
 }
+.dialog-box.wide { width: 480px; }
 .dialog-header {
   padding: 16px 20px 12px;
   font-weight: 600;
@@ -1161,6 +1162,70 @@ body {
   padding: 12px 20px 16px;
   border-top: 1px solid var(--border);
 }
+
+/* ── Service wizard template picker ─────────────────────────────────────────── */
+.wiz-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wiz-template {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 2px solid var(--border-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.wiz-template:hover { border-color: var(--accent); }
+.wiz-template-active { border-color: var(--accent); background: var(--accent-bg); }
+.wiz-template-locked { opacity: .5; cursor: not-allowed; }
+.wiz-template-preview {
+  width: 80px;
+  height: 60px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px;
+  font-family: var(--font-serif);
+  font-size: 5px;
+  color: #333;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.wiz-template-preview--classic .tp-church {
+  font-size: 5.5px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 2px;
+}
+.wiz-template-preview--classic .tp-rule {
+  border-top: 1px solid #333;
+  margin-bottom: 2px;
+}
+.wiz-template-preview--classic .tp-section {
+  font-size: 4.5px;
+  font-weight: bold;
+  margin-top: 2px;
+}
+.wiz-template-preview--classic .tp-line {
+  height: 3px;
+  background: #ccc;
+  margin: 1.5px 0;
+}
+.wiz-template-preview--classic .tp-line--short { width: 60%; }
+.wiz-template-name {
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+.wiz-template-check {
+  font-size: 14px;
+  color: var(--accent);
+}
+.wiz-template-locked .wiz-template-check { color: var(--text-3); }
 
 /* ── Dialog checkbox field ──────────────────────────────────────────────────── */
 .dialog-field-check {

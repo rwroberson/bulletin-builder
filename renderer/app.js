@@ -201,39 +201,131 @@ async function saveAll() {
   setTimeout(() => { btnSave.textContent = 'Save'; btnSave.style.color = ''; }, 1200);
 }
 
-// ── Service dialog ────────────────────────────────────────────────────────────
+// ── Service wizard (multi-step) ──────────────────────────────────────────────
+
+/**
+ * Two-step wizard:
+ *   Step 1 — Date & Type (date, communion toggle)
+ *   Step 2 — Template picker (Classic Half-Sheet only for now)
+ */
+
+let _wiz = { step: 1, date: '', communion: false };
 
 function showServiceDialog() {
-  document.getElementById('svc-name').value      = '';
-  document.getElementById('svc-date').value      = nextSunday();
-  document.getElementById('svc-communion').checked = false;
+  _wiz = { step: 1, date: nextSunday(), communion: false };
+  _renderWizardStep1();
   serviceDialog.classList.remove('hidden');
-  setTimeout(() => document.getElementById('svc-name').focus(), 50);
 }
 
 function hideServiceDialog() {
   serviceDialog.classList.add('hidden');
+  document.getElementById('svc-dialog-box').classList.remove('wide');
 }
 
-document.getElementById('svc-cancel').addEventListener('click', hideServiceDialog);
-serviceDialog.addEventListener('click', e => { if (e.target === serviceDialog) hideServiceDialog(); });
+// ── Step 1 ──────────────────────────────────────────────────────────────────
 
-document.getElementById('svc-confirm').addEventListener('click', async () => {
-  const name      = document.getElementById('svc-name').value.trim();
-  const date      = document.getElementById('svc-date').value;
-  const communion = document.getElementById('svc-communion').checked;
-  if (!name) { document.getElementById('svc-name').focus(); return; }
+function _renderWizardStep1() {
+  const header = document.getElementById('svc-dialog-header');
+  const body   = document.getElementById('svc-dialog-body');
+  const actions = document.getElementById('svc-dialog-actions');
+
+  header.textContent = 'New Service';
+  document.getElementById('svc-dialog-box').classList.remove('wide');
+  body.innerHTML = `
+    <div class="dialog-field">
+      <label for="wiz-date">Date</label>
+      <input type="date" id="wiz-date" value="${_wiz.date}" autocomplete="off">
+    </div>
+    <div class="dialog-field-check">
+      <label class="dialog-check-label">
+        <input type="checkbox" id="wiz-communion"${_wiz.communion ? ' checked' : ''}>
+        Communion this service
+      </label>
+    </div>
+    <div class="dialog-field" style="margin-top:4px">
+      <label for="wiz-name">Service name <span class="dialog-hint">(optional — defaults to date)</span></label>
+      <input type="text" id="wiz-name" placeholder="e.g. Good Friday" autocomplete="off">
+    </div>
+  `;
+  actions.innerHTML = `
+    <button class="btn" id="wiz-cancel">Cancel</button>
+    <button class="btn btn-primary" id="wiz-next">Next →</button>
+  `;
+
+  document.getElementById('wiz-cancel').addEventListener('click', hideServiceDialog);
+  document.getElementById('wiz-next').addEventListener('click', () => {
+    _wiz.date      = document.getElementById('wiz-date').value;
+    _wiz.communion = document.getElementById('wiz-communion').checked;
+    _wiz.name      = document.getElementById('wiz-name').value.trim();
+    if (!_wiz.date) {
+      document.getElementById('wiz-date').focus();
+      return;
+    }
+    _renderWizardStep2();
+  });
+}
+
+// ── Step 2 ──────────────────────────────────────────────────────────────────
+
+function _renderWizardStep2() {
+  const header  = document.getElementById('svc-dialog-header');
+  const body   = document.getElementById('svc-dialog-body');
+  const actions = document.getElementById('svc-dialog-actions');
+
+  header.textContent = 'Choose Template';
+  document.getElementById('svc-dialog-box').classList.add('wide');
+  body.innerHTML = `
+    <p style="font-size:13px;color:var(--text-2);margin:0 0 12px">
+      Select a bulletin template for this service.
+    </p>
+    <div class="wiz-templates">
+      <div class="wiz-template wiz-template-active" id="wiz-tmpl-classic">
+        <div class="wiz-template-preview wiz-template-preview--classic">
+          <div class="tp-church">Vernal Presbyterian</div>
+          <div class="tp-rule"></div>
+          <div class="tp-section">God Calls Us</div>
+          <div class="tp-line"></div>
+          <div class="tp-line tp-line--short"></div>
+          <div class="tp-section">God Cleanses Us</div>
+          <div class="tp-line"></div>
+          <div class="tp-section">Announcements</div>
+        </div>
+        <div class="wiz-template-name">Classic Half-Sheet</div>
+        <div class="wiz-template-check">✓</div>
+      </div>
+      <div class="wiz-template wiz-template-locked" id="wiz-tmpl-letter">
+        <div class="wiz-template-preview">
+          <div style="color:var(--text-3);font-size:11px;padding-top:20px">Coming soon</div>
+        </div>
+        <div class="wiz-template-name">Letter Full-Page</div>
+        <div class="wiz-template-check">🔒</div>
+      </div>
+    </div>
+  `;
+  actions.innerHTML = `
+    <button class="btn" id="wiz-back">← Back</button>
+    <button class="btn btn-primary" id="wiz-create">Start Editing</button>
+  `;
+
+  document.getElementById('wiz-back').addEventListener('click', _renderWizardStep1);
+  document.getElementById('wiz-create').addEventListener('click', _wizardCreate);
+}
+
+async function _wizardCreate() {
   hideServiceDialog();
-  const svc = await window.api.workspace.createService(workspacePath, name, date, communion);
-  setDate(date || name);
+  const name = _wiz.name || _wiz.date;
+  const svc  = await window.api.workspace.createService(workspacePath, name, _wiz.date, _wiz.communion);
+  setDate(_wiz.date);
   weekSidebar?.addServiceIfMissing(svc);
   weekSidebar?.setCurrentService(svc.name);
-  await loadService(svc.name, svc.date || svc.name);
-  // If communion, insert template items into the order
-  if (communion && orderEditor) {
+  await loadService(svc.name, _wiz.date);
+  if (_wiz.communion && orderEditor) {
     await orderEditor.setCommunion(true);
   }
-});
+}
+
+serviceDialog.addEventListener('click', e => { if (e.target === serviceDialog) hideServiceDialog(); });
+
 
 // ── Second-page block list ────────────────────────────────────────────────────
 
