@@ -39,7 +39,7 @@ export class WeekSidebar {
   }
 
   async refresh(workspacePath) {
-    this.services = await window.api.workspace.listServices(workspacePath);
+    this.services = await window.api.db.listServices(workspacePath);
     this._renderList();
   }
 

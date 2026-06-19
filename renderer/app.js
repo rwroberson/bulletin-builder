@@ -313,12 +313,20 @@ function _renderWizardStep2() {
 
 async function _wizardCreate() {
   hideServiceDialog();
-  const name = _wiz.name || _wiz.date;
-  const svc  = await window.api.workspace.createService(workspacePath, name, _wiz.date, _wiz.communion);
-  setDate(_wiz.date);
-  weekSidebar?.addServiceIfMissing(svc);
-  weekSidebar?.setCurrentService(svc.name);
-  await loadService(svc.name, _wiz.date);
+  const result = await window.api.db.createService(workspacePath, {
+    date:         _wiz.date,
+    templateSlug: 'classic-half-sheet',
+    communion:    _wiz.communion,
+    season:       'Ordinary Time',
+  });
+  if (!result?.ok) {
+    alert('Failed to create service: ' + (result?.error ?? 'unknown error'));
+    return;
+  }
+  // Refresh the sidebar from DB
+  await weekSidebar?.refresh(workspacePath);
+  weekSidebar?.setCurrentService(_wiz.date);
+  await loadService(_wiz.date, _wiz.date);
   if (_wiz.communion && orderEditor) {
     await orderEditor.setCommunion(true);
   }

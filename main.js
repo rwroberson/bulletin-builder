@@ -656,7 +656,9 @@ ipcMain.handle('db:getTemplate', (_, workspacePath, slug) => {
 ipcMain.handle('db:listServices', (_, workspacePath) => {
   try {
     const db = getWorkspaceDb(workspacePath);
-    return db.prepare('SELECT id, date, template_id, communion, season, updated_at FROM services ORDER BY date DESC').all();
+    const rows = db.prepare('SELECT id, date, template_id, communion, season, updated_at FROM services ORDER BY date DESC').all();
+    // Return shape compatible with sidebar: { name, date, communion }
+    return rows.map(r => ({ name: r.date, date: r.date, communion: !!r.communion }));
   } catch { return []; }
 });
 
